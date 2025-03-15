@@ -1,5 +1,5 @@
 from .config import CONFIG, AID, COMMANDS
-from .excel_manager import ExcelManager
+# from .excel_manager import ExcelManager
 from .smartcard_app import SmartCardApp
 
 __all__ = [
