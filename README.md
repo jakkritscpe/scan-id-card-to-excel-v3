@@ -6,3 +6,8 @@ This project provides a solution for scanning Thai ID cards and exporting the ex
 ```bash
 pip install pyscard customtkinter psutil xlwings
 ```
+
+## Commnad for build (pyinstaller).
+```bash
+pyinstaller --onefile --windowed --icon=your_icon.ico --name=my_custom_app your_script.py
+```

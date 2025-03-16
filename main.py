@@ -18,6 +18,38 @@ COMMANDS = {
     "Address":     [0x80, 0xb0, 0x15, 0x79, 0x02, 0x00, 0x64]
 }
 
+# 
+LANG = "TH"
+CODE_MSG = {
+    "EN": {
+        "001": "No reader found",
+        "002": "Success",
+        "003": "Data saved successfully",
+        "004": "Unsuccess",
+        "005": "This data already exists in the file.",
+        "006": "No ID card detected.",
+        "007": "Please select an Excel file and sheet first",
+        "008": "ID card inserted. Processing...",
+        "009": "ID card removed.",
+        "010": "Man",
+        "011": "Women"
+    },
+    "TH": {
+        "001": "ไม่พบเครื่องอ่าน",
+        "002": "สำเร็จ",
+        "003": "บันทึกข้อมูลเรียบร้อยแล้ว",
+        "004": "ไม่สำเร็จ",
+        "005": "ข้อมูลนี้มีอยู่ในไฟล์แล้ว",
+        "006": "ไม่พบบัตรประชาชน",
+        "007": "กรุณาเลือกไฟล์ Excel และแผ่นงานก่อน",
+        "008": "บัตรประชาชนถูกใส่ กำลังประมวลผล...",
+        "009": "บัตรประชาชนถูกถอดออก",
+        "010": "ชาย",
+        "011": "หญิง"
+    }
+}
+
+
 def thai2unicode(data):
     """แปลงข้อมูลจาก TIS-620 เป็น Unicode"""
     return bytes(data).decode('tis-620').strip()
@@ -25,6 +57,18 @@ def thai2unicode(data):
 def clean_text(text):
     """ล้างข้อความจากอักขระพิเศษ"""
     return re.sub(r'[#\x00]+', ' ', text).strip()
+
+def gender(code):
+    if code == str(1):
+        return CODE_MSG[LANG]["010"]
+    else:
+        return CODE_MSG[LANG]["011"]
+
+def birth_day(data):
+    if data:
+        return f"{data[6:8]}/{data[4:6]}/{data[0:4]}"
+    else:
+        return data
 
 def get_data(connection, cmd):
     """อ่านข้อมูลจากบัตร"""
@@ -38,7 +82,7 @@ def read_id_card():
     try:
         reader_list = readers()
         if not reader_list:
-            return None, "No reader found"
+            return None, CODE_MSG[LANG]["001"]
         
         reader = reader_list[0]
         connection = reader.createConnection()
@@ -67,9 +111,9 @@ def save_to_excel(file_path, sheet_name, data):
             new_data = [order, card_data["TH_Fullname"], card_data["Address"], "-", card_data["CID"], ""]
             sheet.range(f"A{last_row}").value = new_data
             wb.save()
-            messagebox.showinfo("Success", "Data saved successfully")
+            messagebox.showinfo(CODE_MSG[LANG]["002"], CODE_MSG[LANG]["003"])
         else:
-            messagebox.showwarning("Unsuccess", "This data already exists in the file.")
+            messagebox.showwarning(CODE_MSG[LANG]["004"], CODE_MSG[LANG]["005"])
     except Exception as e:
         return str(e)
 
@@ -92,13 +136,27 @@ def process_card(file_path, sheet_name):
     """อ่านบัตรประชาชนและบันทึกข้อมูลลง Excel"""
     card_data, error = read_id_card()
     if card_data:
-        output_text = "\n".join(f"{k}: {clean_text(v)}" for k, v in card_data.items())
+        # สร้างรายการข้อความที่จัดรูปแบบแล้ว
+        formatted_lines = []
+        for key, value in card_data.items():
+            if key == "Gender":
+                value = gender(value)
+            
+            if key == "DOB":
+                value = birth_day(value)
+                
+            cleaned_value = clean_text(value)
+            formatted_line = f"{key} : {cleaned_value}"
+            formatted_lines.append(formatted_line)
+
+        # รวมข้อความทั้งหมดเข้าด้วยกัน โดยแต่ละข้อความอยู่ในบรรทัดใหม่
+        output_text = "\n".join(formatted_lines)
         output_var.set(output_text)
         save_to_excel(file_path, sheet_name, card_data)
     elif error:
         output_var.set(error)
     else:
-        output_var.set("No ID card detected.")
+        output_var.set(CODE_MSG[LANG]["006"])
 
 def update_output(*args):
     """อัปเดตผลลัพธ์ใน GUI"""
@@ -115,7 +173,7 @@ def card_monitor_loop():
             sheet_name = sheet_var.get()
             
             if not file_path or not sheet_name:
-                output_var.set("Please select an Excel file and sheet first")
+                output_var.set(CODE_MSG[LANG]["007"])
             else:
                 reader_list = readers()
                 if reader_list:
@@ -133,11 +191,11 @@ def card_monitor_loop():
                     current_status = False
 
                 if current_status and not prev_status:
-                    output_var.set("ID card inserted. Processing...")
+                    output_var.set(CODE_MSG[LANG]["008"])
                     process_card(file_path, sheet_name)
 
                 if not current_status and prev_status:
-                    output_var.set("ID card removed.")
+                    output_var.set(CODE_MSG[LANG]["009"])
 
                 prev_status = current_status
         except Exception as e:
@@ -148,9 +206,11 @@ def card_monitor_loop():
 #######################
 #     UI Setup        #
 #######################
-ctk.set_appearance_mode("Dark")
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("green")
 root = ctk.CTk()
 root.title("ID Card Reader")
+root.iconbitmap("asset/3d.ico")
 root.geometry("300x300")
 root.resizable(False, False)
 
@@ -159,21 +219,21 @@ sheet_var = ctk.StringVar()
 output_var = ctk.StringVar()
 
 frame_file = ctk.CTkFrame(root)
-frame_file.pack(pady=10, padx=20, fill="both")
+frame_file.pack(pady=(20,5), padx=20, fill="both", expand=True)
 label_file = ctk.CTkLabel(frame_file, text="Select Excel File", anchor="w")
 label_file.pack(side="left", padx=10)
-button_browse = ctk.CTkButton(frame_file, text="Browse", command=select_file)
+button_browse = ctk.CTkButton(frame_file, text="Browse", command=select_file, width=128)
 button_browse.pack(side="right", padx=10)
 
 frame_sheet = ctk.CTkFrame(root)
-frame_sheet.pack(pady=10, padx=20, fill="both")
+frame_sheet.pack(pady=5, padx=20, fill="both", expand=True)
 label_sheet = ctk.CTkLabel(frame_sheet, text="Select Sheet", anchor="w")
 label_sheet.pack(side="left", padx=10)
-sheet_menu = ctk.CTkOptionMenu(frame_sheet, values=[], variable=sheet_var)
+sheet_menu = ctk.CTkOptionMenu(frame_sheet, values=[], variable=sheet_var, width=128)
 sheet_menu.pack(side="right", padx=10)
 
-output_textbox = ctk.CTkTextbox(root, wrap="word", width=400, height=150)
-output_textbox.pack(pady=10, padx=20, fill="both", expand=True)
+output_textbox = ctk.CTkTextbox(root, wrap="word", width=400, height=100)
+output_textbox.pack(pady=(10,20), padx=20, fill="both", expand=True)
 
 output_var.trace_add("write", update_output)
 
