@@ -1,5 +1,4 @@
-import os
-import sys
+import re
 import xlwings as xw
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -7,6 +6,10 @@ from smartcard.System import readers
 
 def thai2unicode(data):
     return bytes(data).decode('tis-620').strip()
+
+def clean_text(text):
+    """ล้างข้อความจากอักขระพิเศษ"""
+    return re.sub(r'[#\x00]+', ' ', text).strip()
 
 def get_data(connection, cmd):
     req = [0x00, 0xc0, 0x00, 0x00, cmd[-1]]
@@ -66,21 +69,27 @@ def select_file():
 def process_card():
     file_path = file_var.get()
     sheet_name = sheet_var.get()
+    
     if not file_path or not sheet_name:
         output_var.set("Please select an Excel file and sheet first")
     else:
         card_data, error = read_id_card()
         if card_data:
-            output_var.set("\n".join(f"{k}: {v}" for k, v in card_data.items()))
-            save_status = save_to_excel(file_path, sheet_name, card_data)
-            output_var.set(output_var.get() + "\n" + save_status)
+            output_text = "\n".join(f"{k}: {clean_text(v)}" for k, v in card_data.items())
+            output_var.set(output_text)
+            
+            # clean the text before saving to excel file
+            cleaned_data = {k: clean_text(v) for k, v in card_data.items()}
+            
+            save_to_excel(file_path, sheet_name, cleaned_data)
+            # output_var.set(output_var.get() + "\n" + save_status)
         elif error:
             output_var.set(error)
         else:
             output_var.set("No ID card detected.")
     
     # Schedule the next check
-    root.after(1000, process_card)  # Check every 5000 milliseconds (5 seconds)
+    root.after(5000, process_card)  # Check every 5000 milliseconds (5 seconds)
 
 def update_output(*args):
     output_textbox.delete("1.0", "end")
@@ -93,7 +102,7 @@ def update_output(*args):
 ctk.set_appearance_mode("System")
 root = ctk.CTk()
 root.title("ID Card Reader")
-root.geometry("500x450")
+root.geometry("300x300")
 
 file_var = ctk.StringVar()
 sheet_var = ctk.StringVar()
