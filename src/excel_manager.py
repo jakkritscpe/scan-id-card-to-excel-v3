@@ -15,20 +15,28 @@ class ExcelManager:
         self.file_path = file_path
         self.sheet_name = sheet_name
 
-        # ตรวจสอบสิทธิ์การเขียนไฟล์ (อ่าน/เขียนได้)
-        if not os.access(self.file_path, os.W_OK):
-            logger.error(f"ไฟล์ {self.file_path} ถูกล็อกหรือเป็น Read-only")
-            raise PermissionError(f"ไฟล์ {self.file_path} เป็นแบบอ่านอย่างเดียว")
-
         # สร้าง Excel Application (ไม่แสดงหน้าต่าง) และป้องกันการเปิด workbook ใหม่โดยอัตโนมัติ
         self.app = xw.App(visible=True, add_book=False)
         try:
             self.wb = self.app.books.open(self.file_path)
-            self.sheet = self.wb.sheets[self.sheet_name]
+            # หาก sheet_name ว่างเปล่า ให้ใช้แผ่นงานแรก
+            if not self.sheet_name:
+                logger.info("Sheet name is empty, using the first sheet.")
+                self.sheet = self.wb.sheets[0]
+            else:
+                self.sheet = self.wb.sheets[self.sheet_name]
         except Exception as e:
             logger.error(f"เปิดไฟล์ Excel ไม่สำเร็จ: {str(e)}")
             self.app.quit()
             raise
+
+    def get_sheet_names(self):
+        """ดึงชื่อแผ่นงานทั้งหมดจากไฟล์ Excel"""
+        try:
+            return [sheet.name for sheet in self.wb.sheets]
+        except Exception as e:
+            logger.error(f"ไม่สามารถดึงชื่อแผ่นงานได้: {str(e)}")
+            return []
 
     def __enter__(self):
         return self
@@ -43,6 +51,7 @@ class ExcelManager:
             pythoncom.CoUninitialize()  # ปิดการใช้งาน COM เมื่อเสร็จงาน
         if exc_type is not None:
             raise exc_val
+
 
     def get_last_row(self):
         """หาหมายเลขแถวสุดท้ายในคอลัมน์ A"""
