@@ -1,9 +1,13 @@
 import os
+import binascii
 import sys
 import xlwings as xw
 import customtkinter as ctk
 from tkinter import filedialog
 from smartcard.System import readers
+from smartcard.util import toHexString
+
+
 
 def thai2unicode(data):
     return bytes(data).decode('tis-620').strip()
@@ -24,6 +28,7 @@ def read_id_card():
         connection = reader.createConnection()
         connection.connect()
         
+        # Commands
         SELECT = [0x00, 0xA4, 0x04, 0x00, 0x08]
         THAI_CARD = [0xA0, 0x00, 0x00, 0x00, 0x54, 0x48, 0x00, 0x01]
         COMMANDS = {
@@ -37,7 +42,9 @@ def read_id_card():
         
         connection.transmit(SELECT + THAI_CARD)
         
-        return {key: get_data(connection, cmd) for key, cmd in COMMANDS.items()}
+        card_data = {key: get_data(connection, cmd) for key, cmd in COMMANDS.items()}
+        return card_data
+    
     except Exception as e:
         return str(e)
 
@@ -80,30 +87,21 @@ def process_card():
 ctk.set_appearance_mode("System")
 root = ctk.CTk()
 root.title("ID Card Reader")
-root.geometry("500x450")
+root.geometry("500x400")
 
 file_var = ctk.StringVar()
 sheet_var = ctk.StringVar()
 output_var = ctk.StringVar()
-lang = "EN"
 
-frame_file = ctk.CTkFrame(root)
-frame_file.pack(pady=10, padx=20, fill="x")
-ctk.CTkLabel(frame_file, text="Select Excel File:", anchor="w").pack(side="left", padx=10)
-ctk.CTkButton(frame_file, text="Browse", command=select_file, fg_color="#EEEEEE", text_color="#000000").pack(side="right", padx=10)
+ctk.CTkLabel(root, text="Select Excel File:").pack(pady=5)
+ctk.CTkButton(root, text="Browse", command=select_file).pack()
+ctk.CTkLabel(root, textvariable=file_var).pack(pady=5)
 
-frame_sheet = ctk.CTkFrame(root)
-frame_sheet.pack(pady=10, padx=20, fill="x")
-ctk.CTkLabel(frame_sheet, text="Select Sheet:", anchor="w").pack(side="left", padx=10)
-sheet_menu = ctk.CTkOptionMenu(frame_sheet, values=[], variable=sheet_var, fg_color="#EEEEEE", text_color="#000000")
-sheet_menu.pack(side="right", padx=10)
+ctk.CTkLabel(root, text="Select Sheet:").pack(pady=5)
+sheet_menu = ctk.CTkOptionMenu(root, variable=sheet_var)
+sheet_menu.pack()
 
-ctk.CTkButton(root, text="Read ID Card", command=process_card, fg_color="#28A745", text_color="#FFFFFF", corner_radius=8, width=200).pack(pady=20)
-
-# output_frame = ctk.CTkFrame(root)
-# output_frame.pack(pady=10, padx=20, fill="both", expand=True)
-# ctk.CTkLabel(output_frame, textvariable=output_var, wraplength=400, justify="left", anchor="w").pack(pady=10, padx=10)
-ctk.CTkLabel(root, textvariable=output_var, wraplength=400, justify="left", anchor="w").pack(pady=10, padx=20, fill="both", expand=True)
-
+ctk.CTkButton(root, text="Read ID Card", command=process_card).pack(pady=10)
+ctk.CTkLabel(root, textvariable=output_var, wraplength=400, justify="left").pack(pady=10)
 
 root.mainloop()
