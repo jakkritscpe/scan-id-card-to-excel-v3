@@ -5,113 +5,117 @@ import customtkinter as ctk
 from tkinter import filedialog
 from smartcard.System import readers
 
-def thai2unicode(data):
+# Constants for APDU commands
+SELECT = [0x00, 0xA4, 0x04, 0x00, 0x08]
+THAI_CARD = [0xA0, 0x00, 0x00, 0x00, 0x54, 0x48, 0x00, 0x01]
+COMMANDS = {
+    "CID": [0x80, 0xB0, 0x00, 0x04, 0x02, 0x00, 0x0D],
+    "TH Fullname": [0x80, 0xB0, 0x00, 0x11, 0x02, 0x00, 0x64],
+    "EN Fullname": [0x80, 0xB0, 0x00, 0x75, 0x02, 0x00, 0x64],
+    "DOB": [0x80, 0xB0, 0x00, 0xD9, 0x02, 0x00, 0x08],
+    "Gender": [0x80, 0xB0, 0x00, 0xE1, 0x02, 0x00, 0x01],
+    "Address": [0x80, 0xB0, 0x15, 0x79, 0x02, 0x00, 0x64]
+}
+
+def decode_thai(data):
     return bytes(data).decode('tis-620').strip()
 
-def get_data(connection, cmd):
-    req = [0x00, 0xc0, 0x00, 0x00, cmd[-1]]
-    data, sw1, sw2 = connection.transmit(cmd)
-    data, sw1, sw2 = connection.transmit(req)
-    return thai2unicode(data)
+def transmit_command(connection, command):
+    try:
+        data, sw1, sw2 = connection.transmit(command)
+        response_command = [0x00, 0xC0, 0x00, 0x00, command[-1]]
+        data, sw1, sw2 = connection.transmit(response_command)
+        return decode_thai(data)
+    except Exception as e:
+        raise RuntimeError(f"Failed to transmit command {command}: {e}")
 
 def read_id_card():
     try:
-        reader_list = readers()
-        if not reader_list:
-            return "No reader found"
-        
-        reader = reader_list[0]
+        available_readers = readers()
+        if not available_readers:
+            raise RuntimeError("No smartcard readers found.")
+
+        reader = available_readers[0]
         connection = reader.createConnection()
         connection.connect()
-        
-        SELECT = [0x00, 0xA4, 0x04, 0x00, 0x08]
-        THAI_CARD = [0xA0, 0x00, 0x00, 0x00, 0x54, 0x48, 0x00, 0x01]
-        COMMANDS = {
-            "CID": [0x80, 0xb0, 0x00, 0x04, 0x02, 0x00, 0x0d],
-            "TH Fullname": [0x80, 0xb0, 0x00, 0x11, 0x02, 0x00, 0x64],
-            "EN Fullname": [0x80, 0xb0, 0x00, 0x75, 0x02, 0x00, 0x64],
-            "DOB": [0x80, 0xb0, 0x00, 0xD9, 0x02, 0x00, 0x08],
-            "Gender": [0x80, 0xb0, 0x00, 0xE1, 0x02, 0x00, 0x01],
-            "Address": [0x80, 0xb0, 0x15, 0x79, 0x02, 0x00, 0x64]
-        }
-        
         connection.transmit(SELECT + THAI_CARD)
-        
-        return {key: get_data(connection, cmd) for key, cmd in COMMANDS.items()}
+
+        return {key: transmit_command(connection, cmd) for key, cmd in COMMANDS.items()}
     except Exception as e:
-        return str(e)
+        raise RuntimeError(f"Failed to read ID card: {e}")
 
-def toggle_language(event=None):
-    global lang
-    lang = "TH" if lang == "EN" else "EN"
-    update_texts()
+def save_to_excel(file_path, sheet_name, data):
+    try:
+        workbook = xw.Book(file_path)
+        sheet = workbook.sheets[sheet_name]
+        last_row = sheet.range("A" + str(sheet.cells.last_cell.row)).end('up').row + 1
+        sheet.range(f"A{last_row}").value = list(data.values())
+        workbook.save()
+    except Exception as e:
+        raise RuntimeError(f"Failed to save data to Excel: {e}")
 
-def update_texts():
-    texts = {
-        "EN": {
-            "select_file": "Select Excel File:",
-            "browse": "Browse",
-            "select_sheet": "Select Sheet:",
-            "select_language": "Select Language:",
-            "read_card": "Read ID Card"
-        },
-        "TH": {
-            "select_file": "เลือกไฟล์ Excel:",
-            "browse": "เรียกดู",
-            "select_sheet": "เลือกชีต:",
-            "select_language": "เลือกภาษา:",
-            "read_card": "อ่านบัตรประชาชน"
-        }
-    }
-    lang_data = texts[lang]
-    label_file.configure(text=lang_data["select_file"])
-    button_browse.configure(text=lang_data["browse"])
-    label_sheet.configure(text=lang_data["select_sheet"])
-    label_language.configure(text=lang_data["select_language"])
-    button_read.configure(text=lang_data["read_card"])
-    button_toggle_language.configure(text=f"Switch to {'English' if lang == 'TH' else 'Thai'}")
+def select_excel_file():
+    file_path = filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
+    if file_path:
+        file_var.set(file_path)
+        try:
+            workbook = xw.Book(file_path)
+            sheet_names = [sheet.name for sheet in workbook.sheets]
+            sheet_var.set(sheet_names[0])
+            sheet_menu.configure(values=sheet_names)
+        except Exception as e:
+            output_var.set(f"Error loading Excel file: {e}")
 
-# UI Setup
+def process_id_card():
+    file_path = file_var.get()
+    sheet_name = sheet_var.get()
+
+    if not file_path or not sheet_name:
+        output_var.set("Please select an Excel file and sheet first.")
+        return
+
+    try:
+        card_data = read_id_card()
+        output = "\n".join(f"{key}: {value}" for key, value in card_data.items())
+        output_var.set(output)
+        save_to_excel(file_path, sheet_name, card_data)
+        output_var.set(output_var.get() + "\nData saved successfully.")
+    except Exception as e:
+        output_var.set(f"Error: {e}")
+
+    root.after(5000, process_id_card)
+
+def update_output_display(*args):
+    output_textbox.delete("1.0", "end")
+    output_textbox.insert("1.0", output_var.get())
+
 ctk.set_appearance_mode("System")
 root = ctk.CTk()
 root.title("ID Card Reader")
-root.geometry("500x500")
+root.geometry("500x450")
 
 file_var = ctk.StringVar()
 sheet_var = ctk.StringVar()
 output_var = ctk.StringVar()
-lang = "EN"
 
-frame_file = ctk.CTkFrame(root)
-frame_file.pack(pady=10, padx=20, fill="x")
-label_file = ctk.CTkLabel(frame_file, text="Select Excel File:", anchor="w")
+file_frame = ctk.CTkFrame(root)
+file_frame.pack(pady=10, padx=20, fill="x")
+label_file = ctk.CTkLabel(file_frame, text="Select Excel File:", anchor="w")
 label_file.pack(side="left", padx=10)
-# button_browse = ctk.CTkButton(frame_file, text="Browse", command=select_file, fg_color="#EEEEEE", text_color="#000000")
-# button_browse.pack(side="right", padx=10)
+button_browse = ctk.CTkButton(file_frame, text="Browse", command=select_excel_file, fg_color="#EEEEEE", text_color="#000000")
+button_browse.pack(side="right", padx=10)
 
-frame_sheet = ctk.CTkFrame(root)
-frame_sheet.pack(pady=10, padx=20, fill="x")
-label_sheet = ctk.CTkLabel(frame_sheet, text="Select Sheet:", anchor="w")
+sheet_frame = ctk.CTkFrame(root)
+sheet_frame.pack(pady=10, padx=20, fill="x")
+label_sheet = ctk.CTkLabel(sheet_frame, text="Select Sheet:", anchor="w")
 label_sheet.pack(side="left", padx=10)
-sheet_menu = ctk.CTkOptionMenu(frame_sheet, values=[], variable=sheet_var, fg_color="#EEEEEE", text_color="#000000")
+sheet_menu = ctk.CTkOptionMenu(sheet_frame, values=[], variable=sheet_var, fg_color="#EEEEEE", text_color="#000000")
 sheet_menu.pack(side="right", padx=10)
 
-frame_lang = ctk.CTkFrame(root)
-frame_lang.pack(pady=10, padx=20, fill="x")
-label_language = ctk.CTkLabel(frame_lang, text="Select Language:", anchor="w")
-label_language.pack(side="left", padx=10)
-lang_menu = ctk.CTkOptionMenu(frame_lang, values=["EN", "TH"], command=toggle_language, fg_color="#EEEEEE", text_color="#000000")
-lang_menu.pack(side="right", padx=10)
+output_textbox = ctk.CTkTextbox(root, wrap="word", width=400, height=150)
+output_textbox.pack(pady=10, padx=20, fill="both", expand=True)
 
-button_read = ctk.CTkButton(root, text="Read ID Card", command=read_id_card, fg_color="#28A745", text_color="#FFFFFF", corner_radius=8, width=200)
-button_read.pack(pady=20)
+output_var.trace_add("write", update_output_display)
 
-button_toggle_language = ctk.CTkButton(root, text="Switch to Thai", command=toggle_language, fg_color="#AAAAAA", text_color="#FFFFFF", corner_radius=8, width=200)
-button_toggle_language.pack(pady=10)
-
-output_frame = ctk.CTkFrame(root)
-output_frame.pack(pady=10, padx=20, fill="both", expand=True)
-ctk.CTkLabel(output_frame, textvariable=output_var, wraplength=400, justify="left", anchor="w").pack(pady=10, padx=10)
-
-update_texts()
+root.after(0, process_id_card)
 root.mainloop()
