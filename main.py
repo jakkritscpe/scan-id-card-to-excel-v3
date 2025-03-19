@@ -5,6 +5,10 @@ from tkinter import filedialog, messagebox
 from smartcard.System import readers
 import time
 import threading
+import logging
+
+# Logging configuration
+logging.basicConfig(level=logging.DEBUG)
 
 # คำสั่งอ่านข้อมูลจากบัตรประชาชน
 SELECT = [0x00, 0xA4, 0x04, 0x00, 0x08]
@@ -93,7 +97,7 @@ def read_id_card():
         data = {key: get_data(connection, cmd) for key, cmd in COMMANDS.items()}
         return data, None
     except Exception as e:
-        return None, str(e)
+        return None, str("In fuction : read_id_card " + e)
 
 def save_to_excel(file_path, sheet_name, data):
     """บันทึกข้อมูลลงไฟล์ Excel"""
@@ -115,7 +119,7 @@ def save_to_excel(file_path, sheet_name, data):
         else:
             messagebox.showwarning(CODE_MSG[LANG]["004"], CODE_MSG[LANG]["005"])
     except Exception as e:
-        return str(e)
+        logging.error(f"เกิดข้อผิดพลาดในหารบันทึกข้อมูล: {e}")
 
 def select_file():
     """เลือกไฟล์ Excel"""
@@ -166,6 +170,8 @@ def update_output(*args):
 def card_monitor_loop():
     """ตรวจจับการเสียบและถอดบัตร"""
     prev_status = False  
+    
+    title_status = True
 
     while True:
         try:
@@ -179,27 +185,30 @@ def card_monitor_loop():
                 if reader_list:
                     reader = reader_list[0]
                     connection = reader.createConnection()
+                    
+                    if title_status:
+                        output_var.set(f"กำลังเชื่อมต่อกับเครื่องอ่านบัตร {reader} \n\n กรุณาเสียบบัตร / ถอดแล้วเสียบบัตรอีกครั้ง...")
 
                     try:
                         connection.connect()
-                        # output_var.set("Conneted..")
                         current_status = True
+                        if current_status and not prev_status:
+                            output_var.set(CODE_MSG[LANG]["008"])
+                            title_status = False
+                            process_card(file_path, sheet_name)
                     except:
-                        # output_var.set("Can not conneted..")
+                        title_status = True
                         current_status = False
+                        # if not current_status and prev_status:
+                        #     output_var.set(CODE_MSG[LANG]["009"])
+                        
                 else:
                     current_status = False
-
-                if current_status and not prev_status:
-                    output_var.set(CODE_MSG[LANG]["008"])
-                    process_card(file_path, sheet_name)
-
-                if not current_status and prev_status:
-                    output_var.set(CODE_MSG[LANG]["009"])
+                    output_var.set("⚠️ การเชื่อมต่อเครื่องอ่านบัตรไม่สำเร็จ...")
 
                 prev_status = current_status
         except Exception as e:
-            output_var.set(f"Error: {str(e)}")
+            output_var.set(f"เกิดข้อผิดพลาดใน Monitor: {str(e)}")
 
         time.sleep(1)  # ตรวจสอบทุก 1 วินาที
 
