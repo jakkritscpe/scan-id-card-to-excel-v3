@@ -143,6 +143,9 @@ def process_card(file_path, sheet_name):
         # สร้างรายการข้อความที่จัดรูปแบบแล้ว
         formatted_lines = []
         for key, value in card_data.items():
+            if value == "" or value == None:
+                return
+            
             if key == "Gender":
                 value = gender(value)
             
