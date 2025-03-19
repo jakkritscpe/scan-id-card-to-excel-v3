@@ -201,7 +201,7 @@ def card_monitor_loop():
         except Exception as e:
             output_var.set(f"Error: {str(e)}")
 
-        time.sleep(3)  # ตรวจสอบทุก 1 วินาที
+        time.sleep(1)  # ตรวจสอบทุก 1 วินาที
 
 #######################
 #     UI Setup        #
